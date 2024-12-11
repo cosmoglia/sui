@@ -10,9 +10,9 @@ use move_core_types::language_storage::ModuleId;
 
 use move_core_types::vm_status::StatusCode;
 use move_vm_profiler::GasProfiler;
-use move_vm_types::gas::{GasMeter, SimpleInstruction};
-use move_vm_types::loaded_data::runtime_types::Type;
-use move_vm_types::views::{TypeView, ValueView};
+use move_vm_runtime::dev_utils::tiered_gas_schedule::CostTable as TestCostTable;
+use move_vm_runtime::shared::gas::{GasMeter, SimpleInstruction};
+use move_vm_runtime::shared::views::{TypeView, ValueView};
 use once_cell::sync::Lazy;
 
 use crate::gas_model::gas_predicates::native_function_threshold_exceeded;
@@ -24,24 +24,32 @@ use super::gas_predicates::use_legacy_abstract_size;
 /// VM flat fee
 pub const VM_FLAT_FEE: Gas = Gas::new(8_000);
 
-/// The size in bytes for a non-string or address constant on the stack
-pub const CONST_SIZE: AbstractMemorySize = AbstractMemorySize::new(16);
-
-/// The size in bytes for a reference on the stack
-pub const REFERENCE_SIZE: AbstractMemorySize = AbstractMemorySize::new(8);
-
-/// The size of a struct in bytes
-pub const STRUCT_SIZE: AbstractMemorySize = AbstractMemorySize::new(2);
-
-/// The size of a vector (without its containing data) in bytes
-pub const VEC_SIZE: AbstractMemorySize = AbstractMemorySize::new(8);
-
-/// For exists checks on data that doesn't exists this is the multiplier that is used.
-pub const MIN_EXISTS_DATA_SIZE: AbstractMemorySize = AbstractMemorySize::new(100);
-
 pub static ZERO_COST_SCHEDULE: Lazy<CostTable> = Lazy::new(zero_cost_schedule);
 
 pub static INITIAL_COST_SCHEDULE: Lazy<CostTable> = Lazy::new(initial_cost_schedule_v1);
+
+macro_rules! type_size {
+    ($name:ident, $size:expr) => {
+        const $name: AbstractMemorySize = AbstractMemorySize::new($size);
+    };
+}
+
+type_size!(TY_PARAM_SIZE, 1);
+type_size!(BOOL_SIZE, 1);
+type_size!(U8_SIZE, 1);
+type_size!(U16_SIZE, 2);
+type_size!(U32_SIZE, 4);
+type_size!(U64_SIZE, 8);
+type_size!(U128_SIZE, 16);
+type_size!(U256_SIZE, 32);
+type_size!(ADDRESS_SIZE, 32);
+type_size!(SIGNER_SIZE, 32);
+// The size of a vector (without its containing data) in bytes
+type_size!(VEC_SIZE, 8);
+// The size in bytes for a reference on the stack
+type_size!(REFERENCE_SIZE, 8);
+// The size of a struct in bytes
+type_size!(STRUCT_SIZE, 2);
 
 /// The Move VM implementation of state for gas metering.
 ///
@@ -364,15 +372,15 @@ fn get_simple_instruction_stack_change(
     match instr {
         // NB: The `Ret` pops are accounted for in `Call` instructions, so we say `Ret` has no pops.
         Nop | Ret => (0, 0, 0.into(), 0.into()),
-        BrTrue | BrFalse => (1, 0, Type::Bool.size(), 0.into()),
+        BrTrue | BrFalse => (1, 0, BOOL_SIZE, 0.into()),
         Branch => (0, 0, 0.into(), 0.into()),
-        LdU8 => (0, 1, 0.into(), Type::U8.size()),
-        LdU16 => (0, 1, 0.into(), Type::U16.size()),
-        LdU32 => (0, 1, 0.into(), Type::U32.size()),
-        LdU64 => (0, 1, 0.into(), Type::U64.size()),
-        LdU128 => (0, 1, 0.into(), Type::U128.size()),
-        LdU256 => (0, 1, 0.into(), Type::U256.size()),
-        LdTrue | LdFalse => (0, 1, 0.into(), Type::Bool.size()),
+        LdU8 => (0, 1, 0.into(), U8_SIZE),
+        LdU16 => (0, 1, 0.into(), U16_SIZE),
+        LdU32 => (0, 1, 0.into(), U32_SIZE),
+        LdU64 => (0, 1, 0.into(), U64_SIZE),
+        LdU128 => (0, 1, 0.into(), U128_SIZE),
+        LdU256 => (0, 1, 0.into(), U256_SIZE),
+        LdTrue | LdFalse => (0, 1, 0.into(), BOOL_SIZE),
         FreezeRef => (1, 1, REFERENCE_SIZE, REFERENCE_SIZE),
         ImmBorrowLoc | MutBorrowLoc => (0, 1, 0.into(), REFERENCE_SIZE),
         ImmBorrowField | MutBorrowField | ImmBorrowFieldGeneric | MutBorrowFieldGeneric => {
@@ -380,26 +388,21 @@ fn get_simple_instruction_stack_change(
         }
         // Since we don't have the size of the value being cast here we take a conservative
         // over-approximation: it is _always_ getting cast from the smallest integer type.
-        CastU8 => (1, 1, Type::U8.size(), Type::U8.size()),
-        CastU16 => (1, 1, Type::U8.size(), Type::U16.size()),
-        CastU32 => (1, 1, Type::U8.size(), Type::U32.size()),
-        CastU64 => (1, 1, Type::U8.size(), Type::U64.size()),
-        CastU128 => (1, 1, Type::U8.size(), Type::U128.size()),
-        CastU256 => (1, 1, Type::U8.size(), Type::U256.size()),
+        CastU8 => (1, 1, U8_SIZE, U8_SIZE),
+        CastU16 => (1, 1, U8_SIZE, U16_SIZE),
+        CastU32 => (1, 1, U8_SIZE, U32_SIZE),
+        CastU64 => (1, 1, U8_SIZE, U64_SIZE),
+        CastU128 => (1, 1, U8_SIZE, U128_SIZE),
+        CastU256 => (1, 1, U8_SIZE, U256_SIZE),
         // NB: We don't know the size of what integers we're dealing with, so we conservatively
         // over-approximate by popping the smallest integers, and push the largest.
-        Add | Sub | Mul | Mod | Div => (2, 1, Type::U8.size() + Type::U8.size(), Type::U256.size()),
-        BitOr | BitAnd | Xor => (2, 1, Type::U8.size() + Type::U8.size(), Type::U256.size()),
-        Shl | Shr => (2, 1, Type::U8.size() + Type::U8.size(), Type::U256.size()),
-        Or | And => (
-            2,
-            1,
-            Type::Bool.size() + Type::Bool.size(),
-            Type::Bool.size(),
-        ),
-        Lt | Gt | Le | Ge => (2, 1, Type::U8.size() + Type::U8.size(), Type::Bool.size()),
-        Not => (1, 1, Type::Bool.size(), Type::Bool.size()),
-        Abort => (1, 0, Type::U64.size(), 0.into()),
+        Add | Sub | Mul | Mod | Div => (2, 1, U8_SIZE + U8_SIZE, U256_SIZE),
+        BitOr | BitAnd | Xor => (2, 1, U8_SIZE + U8_SIZE, U256_SIZE),
+        Shl | Shr => (2, 1, U8_SIZE + U8_SIZE, U256_SIZE),
+        Or | And => (2, 1, BOOL_SIZE + BOOL_SIZE, BOOL_SIZE),
+        Lt | Gt | Le | Ge => (2, 1, U8_SIZE + U8_SIZE, BOOL_SIZE),
+        Not => (1, 1, BOOL_SIZE, BOOL_SIZE),
+        Abort => (1, 0, U64_SIZE, 0.into()),
     }
 }
 
@@ -601,14 +604,14 @@ impl GasMeter for GasStatus {
             1,
             1,
             2,
-            (Type::Bool.size() + size_reduction).into(),
+            (BOOL_SIZE + size_reduction).into(),
             size_reduction.into(),
         )
     }
 
     fn charge_neq(&mut self, lhs: impl ValueView, rhs: impl ValueView) -> PartialVMResult<()> {
         let size_reduction = self.abstract_memory_size(lhs) + self.abstract_memory_size(rhs);
-        self.charge(1, 1, 2, Type::Bool.size().into(), size_reduction.into())
+        self.charge(1, 1, 2, BOOL_SIZE.into(), size_reduction.into())
     }
 
     fn charge_vec_pack<'a>(
@@ -624,7 +627,7 @@ impl GasMeter for GasStatus {
     }
 
     fn charge_vec_len(&mut self, _ty: impl TypeView) -> PartialVMResult<()> {
-        self.charge(1, 1, 1, Type::U64.size().into(), REFERENCE_SIZE.into())
+        self.charge(1, 1, 1, U64_SIZE.into(), REFERENCE_SIZE.into())
     }
 
     fn charge_vec_borrow(
@@ -638,7 +641,7 @@ impl GasMeter for GasStatus {
             1,
             2,
             REFERENCE_SIZE.into(),
-            (REFERENCE_SIZE + Type::U64.size()).into(),
+            (REFERENCE_SIZE + U64_SIZE).into(),
         )
     }
 
@@ -672,7 +675,7 @@ impl GasMeter for GasStatus {
     }
 
     fn charge_vec_swap(&mut self, _ty: impl TypeView) -> PartialVMResult<()> {
-        let size_decrease = REFERENCE_SIZE + Type::U64.size() + Type::U64.size();
+        let size_decrease = REFERENCE_SIZE + U64_SIZE + U64_SIZE;
         self.charge(1, 1, 1, 0, size_decrease.into())
     }
 
@@ -935,9 +938,9 @@ pub fn initial_cost_schedule_v5() -> CostTable {
 // We don't want our gas depending on the MoveVM test utils and we don't want to fix our
 // representation to whatever is there, so instead we perform this translation from our gas units
 // and cost schedule to the one expected by the Move unit tests.
-pub fn initial_cost_schedule_for_unit_tests() -> move_vm_test_utils::gas_schedule::CostTable {
+pub fn initial_cost_schedule_for_unit_tests() -> TestCostTable {
     let table = initial_cost_schedule_v5();
-    move_vm_test_utils::gas_schedule::CostTable {
+    TestCostTable {
         instruction_tiers: table.instruction_tiers.into_iter().collect(),
         stack_height_tiers: table.stack_height_tiers.into_iter().collect(),
         stack_size_tiers: table.stack_size_tiers.into_iter().collect(),
