@@ -4,10 +4,11 @@
 use crate::{legacy_test_cost, object_runtime::ObjectRuntime, NativesCostTable};
 use move_binary_format::errors::{PartialVMError, PartialVMResult};
 use move_core_types::{gas_algebra::InternalGas, language_storage::TypeTag, vm_status::StatusCode};
-use move_vm_runtime::{native_charge_gas_early_exit, native_functions::NativeContext};
-use move_vm_types::{
-    loaded_data::runtime_types::Type, natives::function::NativeResult, values::Value,
+use move_vm_runtime::{
+    execution::{values::Value, Type},
+    natives::functions::NativeResult,
 };
+use move_vm_runtime::{native_charge_gas_early_exit, natives::functions::NativeContext};
 use smallvec::smallvec;
 use std::collections::VecDeque;
 use sui_types::error::VMMemoryLimitExceededSubStatusCode;
@@ -150,7 +151,7 @@ pub fn get_events_by_type(
         .iter()
         .filter_map(|(ty, _, event)| {
             if specified_ty == *ty {
-                Some(event.copy_value().unwrap())
+                Some(event.copy_value())
             } else {
                 None
             }

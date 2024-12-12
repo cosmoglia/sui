@@ -8,12 +8,14 @@ use move_core_types::{
     runtime_value as R, vm_status::StatusCode,
 };
 use move_vm_runtime::native_charge_gas_early_exit;
-use move_vm_runtime::native_functions::NativeContext;
-use move_vm_types::{
-    loaded_data::runtime_types::Type,
-    natives::function::NativeResult,
+use move_vm_runtime::natives::functions::NativeContext;
+use move_vm_runtime::{
+    execution::{
+        values::{Struct, Value, Vector},
+        Type,
+    },
+    natives::functions::NativeResult,
     pop_arg,
-    values::{Struct, Value, Vector},
 };
 use smallvec::smallvec;
 use std::collections::VecDeque;
@@ -150,8 +152,8 @@ fn consistent_value_before_current_epoch(
     let [newer_value_epoch, newer_value, older_value_opt]: [Value; 3] = unpack_struct(data)?;
     let newer_value_epoch: u64 = newer_value_epoch.value_as()?;
     debug_assert!(
-        unpack_option(newer_value.copy_value()?, value_ty)?.is_some()
-            || unpack_option(older_value_opt.copy_value()?, value_ty)?.is_some()
+        unpack_option(newer_value.copy_value(), value_ty)?.is_some()
+            || unpack_option(older_value_opt.copy_value(), value_ty)?.is_some()
     );
     Ok(if current_epoch > newer_value_epoch {
         newer_value

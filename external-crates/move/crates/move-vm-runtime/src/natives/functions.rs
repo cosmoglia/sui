@@ -25,7 +25,7 @@ use crate::{
     natives::extensions::NativeContextExtensions,
 };
 pub use move_binary_format::errors::PartialVMError;
-use move_binary_format::errors::PartialVMResult;
+use move_binary_format::{errors::PartialVMResult, file_format::AbilitySet};
 pub use move_core_types::vm_status::StatusCode;
 use move_core_types::{
     account_address::AccountAddress, annotated_value as A, gas_algebra::InternalGas,
@@ -270,6 +270,10 @@ impl<'a, 'b, 'c> NativeContext<'a, 'b, 'c> {
             Err(e) if e.major_status().status_type() == StatusType::InvariantViolation => Err(e),
             Err(_) => Ok(None),
         }
+    }
+
+    pub fn type_to_abilities(&self, ty: &Type) -> PartialVMResult<AbilitySet> {
+        self.vtables.abilities(ty)
     }
 
     pub fn type_to_fully_annotated_layout(

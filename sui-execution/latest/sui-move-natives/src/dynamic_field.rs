@@ -14,12 +14,14 @@ use move_core_types::{
     vm_status::StatusCode,
 };
 use move_vm_runtime::native_charge_gas_early_exit;
-use move_vm_runtime::native_functions::NativeContext;
-use move_vm_types::{
-    loaded_data::runtime_types::Type,
-    natives::function::NativeResult,
+use move_vm_runtime::natives::functions::NativeContext;
+use move_vm_runtime::{
+    execution::{
+        values::{StructRef, Value},
+        Type,
+    },
+    natives::functions::NativeResult,
     pop_arg,
-    values::{StructRef, Value},
 };
 use smallvec::smallvec;
 use std::collections::VecDeque;
@@ -194,7 +196,7 @@ pub fn add_child_object(
     );
 
     // TODO remove this copy_value, which will require VM changes
-    let child_id = get_object_id(child.copy_value().unwrap())
+    let child_id = get_object_id(child.copy_value())
         .unwrap()
         .value_as::<AccountAddress>()
         .unwrap()

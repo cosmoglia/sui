@@ -6,9 +6,9 @@ use move_binary_format::errors::{PartialVMError, PartialVMResult};
 use move_core_types::{
     annotated_value as A, effects::Op, runtime_value as R, vm_status::StatusCode,
 };
-use move_vm_types::{
-    loaded_data::runtime_types::Type,
+use move_vm_runtime::execution::{
     values::{GlobalValue, StructRef, Value},
+    Type,
 };
 use std::{
     collections::{btree_map, BTreeMap},
@@ -672,11 +672,7 @@ impl<'a> ChildObjectStore<'a> {
                 setting
             }
         };
-        let value = setting.value.copy_value().map_err(|e| {
-            PartialVMError::new(StatusCode::UNKNOWN_INVARIANT_VIOLATION_ERROR).with_message(
-                format!("Failed to copy value for config setting {child}, with error {e}",),
-            )
-        })?;
+        let value = setting.value.copy_value();
         Ok(ObjectResult::Loaded(Some(value)))
     }
 

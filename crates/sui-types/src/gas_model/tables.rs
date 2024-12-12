@@ -34,7 +34,6 @@ macro_rules! type_size {
     };
 }
 
-type_size!(TY_PARAM_SIZE, 1);
 type_size!(BOOL_SIZE, 1);
 type_size!(U8_SIZE, 1);
 type_size!(U16_SIZE, 2);
@@ -42,8 +41,6 @@ type_size!(U32_SIZE, 4);
 type_size!(U64_SIZE, 8);
 type_size!(U128_SIZE, 16);
 type_size!(U256_SIZE, 32);
-type_size!(ADDRESS_SIZE, 32);
-type_size!(SIGNER_SIZE, 32);
 // The size of a vector (without its containing data) in bytes
 type_size!(VEC_SIZE, 8);
 // The size in bytes for a reference on the stack

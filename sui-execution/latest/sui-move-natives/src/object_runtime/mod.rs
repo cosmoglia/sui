@@ -18,9 +18,9 @@ use move_core_types::{
     runtime_value as R,
     vm_status::StatusCode,
 };
-use move_vm_types::{
-    loaded_data::runtime_types::Type,
+use move_vm_runtime::execution::{
     values::{GlobalValue, Value},
+    Type,
 };
 use object_store::{ActiveChildObject, ChildObjectStore};
 use std::{
@@ -243,7 +243,7 @@ impl<'a> ObjectRuntime<'a> {
         ty: Type,
         obj: Value,
     ) -> PartialVMResult<TransferResult> {
-        let id: ObjectID = get_object_id(obj.copy_value()?)?
+        let id: ObjectID = get_object_id(obj.copy_value())?
             .value_as::<AccountAddress>()?
             .into();
         // - An object is new if it is contained in the new ids or if it is one of the objects

@@ -15,12 +15,13 @@ use move_core_types::{
     language_storage::StructTag,
     vm_status::StatusCode,
 };
-use move_vm_runtime::native_functions::NativeContext;
-use move_vm_types::{
-    loaded_data::runtime_types::Type,
-    natives::function::NativeResult,
+use move_vm_runtime::natives::functions::{NativeContext, NativeResult};
+use move_vm_runtime::{
+    execution::{
+        values::{self, StructRef, Value},
+        Type,
+    },
     pop_arg,
-    values::{self, StructRef, Value},
 };
 use smallvec::smallvec;
 use std::{
@@ -192,7 +193,7 @@ pub fn end_transaction(
     let mut written = vec![];
     for (id, (owner, ty, value)) in writes {
         // write configs to cache
-        new_object_values.insert(id, (ty.clone(), value.copy_value().unwrap()));
+        new_object_values.insert(id, (ty.clone(), value.copy_value()));
         transferred.push((id, owner.clone()));
         incorrect_shared_or_imm_handling = incorrect_shared_or_imm_handling
             || taken_shared_or_imm
@@ -499,7 +500,7 @@ pub fn take_immutable_by_id(
                 .taken_immutable_values
                 .entry(specified_ty)
                 .or_default()
-                .insert(id, value.copy_value().unwrap());
+                .insert(id, value.copy_value());
             NativeResult::ok(legacy_test_cost(), smallvec![value])
         }
         Err(native_err) => native_err,
@@ -766,7 +767,7 @@ fn take_from_inventory(
     taken.insert(id, owner.clone());
     input_objects.insert(id, owner);
     let obj = obj_opt.unwrap();
-    Ok(obj.copy_value().unwrap())
+    Ok(obj.copy_value())
 }
 
 fn most_recent_at_ty(

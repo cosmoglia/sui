@@ -1348,6 +1348,15 @@ impl IntegerValue {
     }
 }
 
+impl Value {
+    pub fn value_as<T>(self) -> PartialVMResult<T>
+    where
+        Self: VMValueCast<T>,
+    {
+        VMValueCast::cast(self)
+    }
+}
+
 // -------------------------------------------------------------------------------------------------
 // Integer Operations
 // -------------------------------------------------------------------------------------------------
@@ -1924,8 +1933,8 @@ impl Container {
 }
 
 impl Value {
-    #[allow(dead_code)]
-    pub(crate) fn legacy_size(&self) -> AbstractMemorySize {
+    #[deprecated(note = "Update this to not use the legacy size")]
+    pub fn legacy_size(&self) -> AbstractMemorySize {
         use Value::*;
 
         match self {
