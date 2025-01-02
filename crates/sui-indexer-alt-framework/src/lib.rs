@@ -126,7 +126,7 @@ impl Indexer {
         indexer_args: IndexerArgs,
         client_args: ClientArgs,
         ingestion_config: IngestionConfig,
-        migrations: &'static EmbeddedMigrations,
+        migrations: Option<&'static EmbeddedMigrations>,
         cancel: CancellationToken,
     ) -> Result<Self> {
         let IndexerArgs {
@@ -187,7 +187,7 @@ impl Indexer {
                 local_ingestion_path: Some(tempdir().unwrap().into_path()),
             },
             IngestionConfig::default(),
-            &MIGRATIONS,
+            Some(&MIGRATIONS),
             CancellationToken::new(),
         )
         .await
@@ -369,13 +369,15 @@ impl Indexer {
     /// the database's schema is up-to-date for both the indexer framework and the specific
     /// indexer.
     pub fn migrations(
-        migrations: &'static EmbeddedMigrations,
+        migrations: Option<&'static EmbeddedMigrations>,
     ) -> impl MigrationSource<Pg> + Send + Sync + 'static {
-        struct Migrations(&'static EmbeddedMigrations);
+        struct Migrations(Option<&'static EmbeddedMigrations>);
         impl MigrationSource<Pg> for Migrations {
             fn migrations(&self) -> migration::Result<Vec<Box<dyn Migration<Pg>>>> {
                 let mut migrations = MIGRATIONS.migrations()?;
-                migrations.extend(self.0.migrations()?);
+                if let Some(more_migrations) = self.0 {
+                    migrations.extend(more_migrations.migrations()?);
+                }
                 Ok(migrations)
             }
         }
