@@ -5,7 +5,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use anyhow::Context;
-use api::rpc_module::RpcModule;
+use api::{coin::CoinServer, rpc_module::RpcModule};
 use jsonrpsee::server::{RpcServiceBuilder, ServerBuilder};
 use metrics::middleware::MetricsLayer;
 use metrics::RpcMetrics;
@@ -18,11 +18,13 @@ use tokio_util::sync::CancellationToken;
 use tower_layer::Identity;
 use tracing::info;
 
-use crate::api::{governance::Governance, Reader};
+use crate::{api::governance::Governance, reader::Reader};
 
 mod api;
 pub mod args;
 mod metrics;
+mod raw_query;
+mod reader;
 
 #[derive(clap::Args, Debug, Clone)]
 pub struct RpcArgs {
@@ -33,6 +35,10 @@ pub struct RpcArgs {
     /// The maximum number of concurrent connections to accept.
     #[clap(long, default_value_t = Self::default().max_rpc_connections)]
     pub max_rpc_connections: u32,
+
+    /// The maximum number of items that can be requested in a single page.
+    #[clap(long, default_value_t = Self::default().max_page_limit)]
+    pub max_page_limit: usize,
 }
 
 pub struct RpcService {
@@ -66,6 +72,7 @@ impl RpcService {
         let RpcArgs {
             rpc_listen_address,
             max_rpc_connections,
+            ..
         } = rpc_args;
 
         let metrics = RpcMetrics::new(registry);
@@ -175,6 +182,7 @@ impl Default for RpcArgs {
         Self {
             rpc_listen_address: "0.0.0.0:6000".parse().unwrap(),
             max_rpc_connections: 100,
+            max_page_limit: 50,
         }
     }
 }
@@ -185,12 +193,14 @@ pub async fn start_rpc(
     registry: &Registry,
     cancel: CancellationToken,
 ) -> anyhow::Result<JoinHandle<()>> {
+    let max_page_limit = rpc_args.max_page_limit;
     let mut rpc =
         RpcService::new(rpc_args, registry, cancel).context("Failed to create RPC service")?;
 
-    let reader = Reader::new(db_args, rpc.metrics(), registry).await?;
+    let reader = Reader::new(db_args, rpc.metrics(), registry, max_page_limit).await?;
 
     rpc.add_module(Governance(reader.clone()))?;
+    rpc.add_module(CoinServer(reader.clone()))?;
 
     rpc.run().await.context("Failed to start RPC service")
 }

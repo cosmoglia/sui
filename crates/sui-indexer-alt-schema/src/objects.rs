@@ -12,7 +12,7 @@ use sui_types::object::{Object, Owner};
 
 use crate::schema::{coin_balance_buckets, kv_objects, obj_info, obj_versions};
 
-#[derive(Insertable, Debug, Clone, FieldCount)]
+#[derive(Insertable, Debug, Clone, FieldCount, Queryable, QueryableByName, Selectable)]
 #[diesel(table_name = kv_objects, primary_key(object_id, object_version))]
 #[diesel(treat_none_as_default_value = false)]
 pub struct StoredObject {
@@ -21,7 +21,7 @@ pub struct StoredObject {
     pub serialized_object: Option<Vec<u8>>,
 }
 
-#[derive(Insertable, Debug, Clone, FieldCount)]
+#[derive(Insertable, Debug, Clone, FieldCount, Queryable, QueryableByName, Selectable)]
 #[diesel(table_name = obj_versions, primary_key(object_id, object_version))]
 pub struct StoredObjVersion {
     pub object_id: Vec<u8>,
@@ -62,7 +62,9 @@ pub struct StoredObjInfo {
     pub instantiation: Option<Vec<u8>>,
 }
 
-#[derive(Insertable, Queryable, Debug, Clone, FieldCount, Eq, PartialEq)]
+#[derive(
+    Insertable, Debug, Clone, FieldCount, Queryable, QueryableByName, Selectable, Eq, PartialEq,
+)]
 #[diesel(table_name = coin_balance_buckets, primary_key(object_id, cp_sequence_number))]
 #[diesel(treat_none_as_default_value = false)]
 pub struct StoredCoinBalanceBucket {
