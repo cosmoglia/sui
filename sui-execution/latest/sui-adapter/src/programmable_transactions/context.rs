@@ -15,7 +15,7 @@ mod checked {
     use crate::adapter::new_native_extensions;
     use crate::error::convert_vm_error;
     use crate::execution_mode::ExecutionMode;
-    use crate::execution_value::{CommandKind, ObjectContents, TryFromValue, Value};
+    use crate::execution_value::{CommandKind, ExecutionType, ObjectContents, TryFromValue, Value};
     use crate::execution_value::{
         ExecutionState, InputObjectMetadata, InputValue, ObjectValue, RawValueType, ResultValue,
         UsageKind,
@@ -23,25 +23,26 @@ mod checked {
     use crate::gas_charger::GasCharger;
     use crate::programmable_transactions::linkage_view::LinkageView;
     use crate::type_resolver::TypeTagResolver;
+    use move_binary_format::file_format::AbilitySet;
     use move_binary_format::{
         errors::{Location, PartialVMError, PartialVMResult, VMError, VMResult},
         file_format::{CodeOffset, FunctionDefinitionIndex, TypeParameterIndex},
         CompiledModule,
     };
-    use move_core_types::resolver::ModuleResolver;
+    use move_core_types::resolver::{ModuleResolver, SerializedPackage};
     use move_core_types::vm_status::StatusCode;
     use move_core_types::{
         account_address::AccountAddress,
         identifier::IdentStr,
         language_storage::{ModuleId, StructTag, TypeTag},
     };
-    use move_vm_runtime::native_extensions::NativeContextExtensions;
-    use move_vm_runtime::{
-        move_vm::MoveVM,
-        session::{LoadedFunctionInstantiation, SerializedReturnValues},
-    };
-    use move_vm_types::data_store::DataStore;
-    use move_vm_types::loaded_data::runtime_types::Type;
+    use move_vm_runtime::execution::vm::MoveVM;
+    use move_vm_runtime::execution::Type;
+    use move_vm_runtime::natives::extensions::NativeContextExtensions;
+    use move_vm_runtime::runtime::MoveRuntime;
+    use move_vm_runtime::shared::data_store::DataStore;
+    use move_vm_runtime::shared::linkage_context::LinkageContext;
+    use move_vm_runtime::shared::serialization::SerializedReturnValues;
     use sui_move_natives::object_runtime::{
         self, get_all_uids, max_event_error, LoadedRuntimeObject, ObjectRuntime, RuntimeResults,
     };
@@ -71,7 +72,7 @@ mod checked {
         /// Metrics for reporting exceeded limits
         pub metrics: Arc<LimitsMetrics>,
         /// The MoveVM
-        pub vm: &'vm MoveVM,
+        pub vm: &'vm MoveRuntime,
         /// The LinkageView for this session
         pub linkage_view: LinkageView<'state>,
         pub native_extensions: NativeContextExtensions<'state>,
@@ -85,7 +86,7 @@ mod checked {
         /// Additional transfers not from the Move runtime
         additional_transfers: Vec<(/* new owner */ SuiAddress, ObjectValue)>,
         /// Newly published packages
-        new_packages: Vec<MovePackage>,
+        pub new_packages: Vec<MovePackage>,
         /// User events are claimed after each Move call
         user_events: Vec<(ModuleId, StructTag, Vec<u8>)>,
         // runtime data
@@ -119,7 +120,8 @@ mod checked {
         pub fn new(
             protocol_config: &'a ProtocolConfig,
             metrics: Arc<LimitsMetrics>,
-            vm: &'vm MoveVM,
+            vm: &'vm MoveRuntime,
+            // linkage_resolver: Resolver
             state_view: &'state dyn ExecutionState,
             tx_context: &'a mut TxContext,
             gas_charger: &'a mut GasCharger,
@@ -196,11 +198,11 @@ mod checked {
             #[skip_checked_arithmetic]
             move_vm_profiler::tracing_feature_enabled! {
                 use move_vm_profiler::GasProfiler;
-                use move_vm_types::gas::GasMeter;
+                use move_vm_runtime::shared::gas::GasMeter;
 
                 let tx_digest = tx_context.digest();
                 let remaining_gas: u64 =
-                    move_vm_types::gas::GasMeter::remaining_gas(gas_charger.move_gas_status())
+                    move_vm_runtime::shared::gas::GasMeter::remaining_gas(gas_charger.move_gas_status())
                         .into();
                 gas_charger
                     .move_gas_status_mut()
@@ -272,8 +274,8 @@ mod checked {
             self.linkage_view.set_linkage(package.move_package())
         }
 
-        /// Load a type using the context's current session.
-        pub fn load_type(&mut self, type_tag: &TypeTag) -> VMResult<Type> {
+        /// Load a type. Linkage context is created ad-hoc for the type and its arguments.
+        pub fn load_type(&mut self, type_tag: &TypeTag) -> VMResult<ExecutionType> {
             load_type(
                 self.vm,
                 &mut self.linkage_view,
@@ -283,12 +285,12 @@ mod checked {
         }
 
         /// Load a type using the context's current session.
-        pub fn load_type_from_struct(&mut self, struct_tag: &StructTag) -> VMResult<Type> {
-            load_type_from_struct(
+        pub fn load_type_from_struct(&mut self, struct_tag: &StructTag) -> VMResult<ExecutionType> {
+            load_type(
                 self.vm,
                 &mut self.linkage_view,
                 &self.new_packages,
-                struct_tag,
+                &TypeTage::Struct(struct_tag.clone()),
             )
         }
 
@@ -536,7 +538,7 @@ mod checked {
         }
 
         /// Create a new package
-        pub fn new_package<'p>(
+        pub fn new_package<'p>(con
             &self,
             modules: &[CompiledModule],
             dependencies: impl IntoIterator<Item = &'p MovePackage>,
@@ -1013,18 +1015,20 @@ mod checked {
 
         pub fn publish_module_bundle(
             &mut self,
-            modules: Vec<Vec<u8>>,
-            sender: AccountAddress,
-        ) -> VMResult<()> {
+            runtime_id: AccountAddress,
+            pkg: SerializedPackage,
+        ) -> VMResult<MoveVM> {
             // TODO: publish_module_bundle() currently doesn't charge gas.
             // Do we want to charge there?
             let mut data_store = SuiDataStore::new(&self.linkage_view, &self.new_packages);
-            self.vm.get_runtime().publish_module_bundle(
-                modules,
-                sender,
+            let (_, vm) = self.vm.validate_package(
                 &mut data_store,
+                runtime_id,
+                pkg,
                 self.gas_charger.move_gas_status_mut(),
-            )
+                &self.native_extensions,
+            )?;
+            Ok(vm)
         }
     }
 
@@ -1039,7 +1043,7 @@ mod checked {
 
     /// Fetch the package at `package_id` with a view to using it as a link context.  Produces an error
     /// if the object at that ID does not exist, or is not a package.
-    fn package_for_linkage(
+    pub fn package_for_linkage(
         linkage_view: &LinkageView,
         package_id: ObjectID,
     ) -> VMResult<PackageObject> {
@@ -1059,103 +1063,42 @@ mod checked {
         }
     }
 
+    pub fn load_type(
+        vm: &MoveRuntime,
+        linkage_view: &LinkageView,
+        new_packages: &[MovePackage],
+        type_tag: &TypeTag,
+    ) -> VMResult<ExecutionType> {
+        let mut link_ctx = type_tag
+            .all_addresses()
+            .first()
+            .map(|addr| LinkageContext::new(*addr, []))
+            .unwrap_or_else(|| LinkageContext::new(AccountAddress::ZERO, []));
+        link_ctx.add_type_arg_addresses_reflexive([type_tag]);
+        let data_store = SuiDataStore::new(linkage_view, new_packages);
+        let vm = vm.make_vm(data_store, link_ctx)?;
+        let type_ = vm.load_type(type_tag)?;
+        let abilities = vm.type_abilities(&type_)?;
+        Ok(ExecutionType { type_, abilities })
+    }
+
     pub fn load_type_from_struct(
-        vm: &MoveVM,
-        linkage_view: &mut LinkageView,
+        vm: &MoveRuntime,
+        linkage_view: &LinkageView,
         new_packages: &[MovePackage],
         struct_tag: &StructTag,
     ) -> VMResult<Type> {
-        fn verification_error<T>(code: StatusCode) -> VMResult<T> {
-            Err(PartialVMError::new(code).finish(Location::Undefined))
-        }
-
-        let StructTag {
-            address,
-            module,
-            name,
-            type_params,
-        } = struct_tag;
-
-        // Load the package that the struct is defined in, in storage
-        let defining_id = ObjectID::from_address(*address);
-        let package = package_for_linkage(linkage_view, defining_id)?;
-
-        // Set the defining package as the link context while loading the
-        // struct
-        let original_address = linkage_view
-            .set_linkage(package.move_package())
-            .map_err(|e| {
-                PartialVMError::new(StatusCode::UNKNOWN_INVARIANT_VIOLATION_ERROR)
-                    .with_message(e.to_string())
-                    .finish(Location::Undefined)
-            })?;
-
-        let runtime_id = ModuleId::new(original_address, module.clone());
-        let data_store = SuiDataStore::new(linkage_view, new_packages);
-        let res = vm.get_runtime().load_type(&runtime_id, name, &data_store);
-        linkage_view.reset_linkage();
-        let (idx, struct_type) = res?;
-
-        // Recursively load type parameters, if necessary
-        let type_param_constraints = struct_type.type_param_constraints();
-        if type_param_constraints.len() != type_params.len() {
-            return verification_error(StatusCode::NUMBER_OF_TYPE_ARGUMENTS_MISMATCH);
-        }
-
-        if type_params.is_empty() {
-            Ok(Type::Datatype(idx))
-        } else {
-            let loaded_type_params = type_params
-                .iter()
-                .map(|type_param| load_type(vm, linkage_view, new_packages, type_param))
-                .collect::<VMResult<Vec<_>>>()?;
-
-            // Verify that the type parameter constraints on the struct are met
-            for (constraint, param) in type_param_constraints.zip(&loaded_type_params) {
-                let abilities = vm.get_runtime().get_type_abilities(param)?;
-                if !constraint.is_subset(abilities) {
-                    return verification_error(StatusCode::CONSTRAINT_NOT_SATISFIED);
-                }
-            }
-
-            Ok(Type::DatatypeInstantiation(Box::new((
-                idx,
-                loaded_type_params,
-            ))))
-        }
-    }
-
-    /// Load `type_tag` to get a `Type` in the provided `session`.  `session`'s linkage context may be
-    /// reset after this operation, because during the operation, it may change when loading a struct.
-    pub fn load_type(
-        vm: &MoveVM,
-        linkage_view: &mut LinkageView,
-        new_packages: &[MovePackage],
-        type_tag: &TypeTag,
-    ) -> VMResult<Type> {
-        Ok(match type_tag {
-            TypeTag::Bool => Type::Bool,
-            TypeTag::U8 => Type::U8,
-            TypeTag::U16 => Type::U16,
-            TypeTag::U32 => Type::U32,
-            TypeTag::U64 => Type::U64,
-            TypeTag::U128 => Type::U128,
-            TypeTag::U256 => Type::U256,
-            TypeTag::Address => Type::Address,
-            TypeTag::Signer => Type::Signer,
-
-            TypeTag::Vector(inner) => {
-                Type::Vector(Box::new(load_type(vm, linkage_view, new_packages, inner)?))
-            }
-            TypeTag::Struct(struct_tag) => {
-                return load_type_from_struct(vm, linkage_view, new_packages, struct_tag)
-            }
-        })
+        load_type(
+            vm,
+            linkage_view,
+            new_packages,
+            &TypeTag::Struct(struct_tag.clone()),
+        )
     }
 
     pub(crate) fn make_object_value(
         protocol_config: &ProtocolConfig,
-        vm: &MoveVM,
+        vm: &MoveRuntime,
         linkage_view: &mut LinkageView,
         new_packages: &[MovePackage],
         type_: MoveObjectType,

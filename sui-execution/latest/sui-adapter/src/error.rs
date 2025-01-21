@@ -9,7 +9,7 @@ use move_core_types::{
     resolver::MoveResolver,
     vm_status::{StatusCode, StatusType},
 };
-use move_vm_runtime::move_vm::MoveVM;
+use move_vm_runtime::execution::vm::MoveVM;
 use sui_types::error::{ExecutionError, SuiError};
 use sui_types::execution_status::{ExecutionFailureStatus, MoveLocation, MoveLocationOpt};
 

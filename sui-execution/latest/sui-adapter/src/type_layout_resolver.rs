@@ -1,12 +1,12 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::programmable_transactions::context::load_type_from_struct;
 use crate::programmable_transactions::linkage_view::LinkageView;
 use move_core_types::account_address::AccountAddress;
 use move_core_types::annotated_value as A;
 use move_core_types::language_storage::StructTag;
 use move_vm_runtime::move_vm::MoveVM;
+use move_vm_runtime::runtime::MoveRuntime;
 use sui_types::base_types::ObjectID;
 use sui_types::error::SuiResult;
 use sui_types::execution::TypeLayoutStore;
@@ -17,7 +17,7 @@ use sui_types::{error::SuiError, layout_resolver::LayoutResolver};
 /// Invocation into the `Session` to leverage the `LinkageView` implementation
 /// common to the runtime.
 pub struct TypeLayoutResolver<'state, 'vm> {
-    vm: &'vm MoveVM,
+    vm: &'vm MoveRuntime,
     linkage_view: LinkageView<'state>,
 }
 

@@ -7,9 +7,12 @@ pub use checked::*;
 mod checked {
     use crate::execution_mode::ExecutionMode;
     use crate::execution_value::{
-        CommandKind, ExecutionState, ObjectContents, ObjectValue, RawValueType, Value,
+        CommandKind, ExecutionState, ExecutionType, ObjectContents, ObjectValue, RawValueType,
+        Value,
     };
     use crate::gas_charger::GasCharger;
+    use crate::linkage_resolution::LinkageAnalysis;
+    use crate::programmable_transactions::linkage_view::LinkageInfo;
     use move_binary_format::{
         compatibility::{Compatibility, InclusionCheck},
         errors::{Location, PartialVMResult, VMResult},
@@ -17,17 +20,18 @@ mod checked {
         file_format_common::VERSION_6,
         normalized, CompiledModule,
     };
+    use move_core_types::resolver::{SerializedPackage, TypeOrigin};
     use move_core_types::{
         account_address::AccountAddress,
         identifier::{IdentStr, Identifier},
         language_storage::{ModuleId, TypeTag},
         u256::U256,
     };
-    use move_vm_runtime::{
-        move_vm::MoveVM,
-        session::{LoadedFunctionInstantiation, SerializedReturnValues},
-    };
-    use move_vm_types::loaded_data::runtime_types::{CachedDatatype, Type};
+    use move_vm_runtime::execution::vm::MoveVM;
+    use move_vm_runtime::execution::Type;
+    use move_vm_runtime::runtime::MoveRuntime;
+    use move_vm_runtime::shared::linkage_context::LinkageContext;
+    use move_vm_runtime::shared::serialization::SerializedReturnValues;
     use serde::{de::DeserializeSeed, Deserialize};
     use std::{
         collections::{BTreeMap, BTreeSet},
@@ -64,12 +68,13 @@ mod checked {
     use tracing::instrument;
 
     use crate::adapter::substitute_package_id;
-    use crate::programmable_transactions::context::*;
+    use crate::programmable_transactions::context::{ExecutionContext, *};
 
-    pub fn execute<Mode: ExecutionMode>(
+    pub fn execute<Mode: ExecutionMode, Resolution: LinkageAnalysis>(
         protocol_config: &ProtocolConfig,
         metrics: Arc<LimitsMetrics>,
-        vm: &MoveVM,
+        vm: &MoveRuntime,
+        linkage_resolver: &mut Resolution,
         state_view: &mut dyn ExecutionState,
         tx_context: &mut TxContext,
         gas_charger: &mut GasCharger,
@@ -80,6 +85,7 @@ mod checked {
             protocol_config,
             metrics,
             vm,
+            linkage_resolver,
             state_view,
             tx_context,
             gas_charger,
@@ -134,23 +140,18 @@ mod checked {
                     );
                 };
 
-                let tag = to_type_tag(context, tag)?;
-
-                let elem_ty = context
+                let (elem_ty, inner_abilities) = context
                     .load_type(&tag)
                     .map_err(|e| context.convert_vm_error(e))?;
-                let ty = Type::Vector(Box::new(elem_ty));
-                let abilities = context
-                    .vm
-                    .get_runtime()
-                    .get_type_abilities(&ty)
-                    .map_err(|e| context.convert_vm_error(e))?;
+                let ty = ExecutionType {
+                    type_: Type::Vector(Box::new(elem_ty)),
+                    abilities: vector_abilites(inner_abilities),
+                };
                 // BCS layout for any empty vector should be the same
                 let bytes = bcs::to_bytes::<Vec<u8>>(&vec![]).unwrap();
                 vec![Value::Raw(
                     RawValueType::Loaded {
                         ty,
-                        abilities,
                         used_in_non_entry_move_call: false,
                     },
                     bytes,
@@ -185,16 +186,13 @@ mod checked {
                         used_in_non_entry_move_call || value.was_used_in_non_entry_move_call();
                     value.write_bcs_bytes(&mut res);
                 }
-                let ty = Type::Vector(Box::new(elem_ty));
-                let abilities = context
-                    .vm
-                    .get_runtime()
-                    .get_type_abilities(&ty)
-                    .map_err(|e| context.convert_vm_error(e))?;
+                let ty = ExecutionType {
+                    type_: Type::Vector(Box::new(elem_ty.type_)),
+                    abilities: vector_abilites(elem_ty.abilities),
+                };
                 vec![Value::Raw(
                     RawValueType::Loaded {
                         ty,
-                        abilities,
                         used_in_non_entry_move_call,
                     },
                     res,
@@ -282,43 +280,7 @@ mod checked {
                 vec![]
             }
             Command::MoveCall(move_call) => {
-                let ProgrammableMoveCall {
-                    package,
-                    module,
-                    function,
-                    type_arguments,
-                    arguments,
-                } = *move_call;
-
-                let module = to_identifier(context, module)?;
-                let function = to_identifier(context, function)?;
-
-                // Convert type arguments to `Type`s
-                let mut loaded_type_arguments = Vec::with_capacity(type_arguments.len());
-                for (ix, type_arg) in type_arguments.into_iter().enumerate() {
-                    let type_arg = to_type_tag(context, type_arg)?;
-                    let ty = context
-                        .load_type(&type_arg)
-                        .map_err(|e| context.convert_type_argument_error(ix, e))?;
-                    loaded_type_arguments.push(ty);
-                }
-
-                let original_address = context.set_link_context(package)?;
-                let storage_id = ModuleId::new(*package, module.clone());
-                let runtime_id = ModuleId::new(original_address, module);
-                let return_values = execute_move_call::<Mode>(
-                    context,
-                    &mut argument_updates,
-                    &storage_id,
-                    &runtime_id,
-                    &function,
-                    loaded_type_arguments,
-                    arguments,
-                    /* is_init */ false,
-                );
-
-                context.linkage_view.reset_linkage();
-                return_values?
+                execute_move_call_command(context, &mut argument_updates, *move_call)?
             }
             Command::Publish(modules, dep_ids) => {
                 execute_move_publish::<Mode>(context, &mut argument_updates, modules, dep_ids)?
@@ -339,9 +301,104 @@ mod checked {
         Ok(())
     }
 
+    fn vector_abilites(abilities: AbilitySet) -> AbilitySet {
+        AbilitySet::polymorphic_abilities(AbilitySet::VECTOR, vec![false], vec![abilities])
+    }
+
+    fn vm_linkage_for_move_call(
+        context: &mut ExecutionContext<'_, '_, '_>,
+        move_call: &ProgrammableMoveCall,
+    ) -> VMResult<(LinkageContext, AccountAddress)> {
+        let ProgrammableMoveCall {
+            package,
+            module,
+            function,
+            type_arguments,
+            arguments,
+        } = move_call;
+        let package = package_for_linkage(&context.linkage_view, move_call.package)?;
+        let move_package = package.move_package();
+        let runtime_address = move_package.original_package_id().into();
+        let mut link_ctx = move_package.move_linkage_context();
+        let tags = type_arguments
+            .iter()
+            .map(|ty| to_type_tag(context, ty.clone()))
+            .collect::<Result<Vec<_>, _>>()?;
+        link_ctx.add_type_arg_addresses_reflexive(&tags);
+        Ok(Some((link_ctx, runtime_address)))
+    }
+
+    fn vm_linkage_for_make_move_vec(
+        context: &mut ExecutionContext<'_, '_, '_>,
+        ty_input: TypeInput,
+    ) -> VMResult<LinkageContext> {
+        let tag = to_type_tag(context, ty_input)?;
+        // NB: We don't pick a root address here but we need one, so we pick a fake one
+        // (deterministically). If no address is found returning the empty link context is
+        // fine since no addresses are present, and therefore the type must be a primitive
+        // and a link context is not needed.
+        let Some(root_address_not) = tag.all_addresses().first() else {
+            return Ok(LinkageContext::new(AccountAddress::ZERO, []));
+        };
+        let mut link_ctx = LinkageContext::new(root_address_not, []);
+        link_ctx.add_type_arg_addresses_reflexive(&[tag]);
+        Ok(link_ctx)
+    }
+
+    fn execute_move_call_command<Mode: ExecutionMode>(
+        context: &mut ExecutionContext<'_, '_, '_>,
+        argument_updates: &mut Mode::ArgumentUpdates,
+        move_call: ProgrammableMoveCall,
+    ) -> Result<Vec<Value>, ExecutionError> {
+        let (link_ctx, runtime_id) = vm_linkage_for_move_call(context, &move_call)?;
+        let data_store = SuiDataStore::new(&context.linkage_view, &context.new_packages);
+        let vm = context.vm.make_vm_with_native_extensions(
+            data_store,
+            link_ctx,
+            &context.native_extensions,
+        )?;
+
+        let ProgrammableMoveCall {
+            package,
+            module,
+            function,
+            type_arguments,
+            arguments,
+        } = move_call;
+
+        let module = to_identifier(context, module)?;
+        let function = to_identifier(context, function)?;
+
+        // Convert type arguments to `Type`s
+        let mut loaded_type_arguments = Vec::with_capacity(type_arguments.len());
+        for (ix, type_arg) in type_arguments.into_iter().enumerate() {
+            let type_arg = to_type_tag(context, type_arg)?;
+            let ty = vm
+                .load_type(&type_arg)
+                .map_err(|e| context.convert_type_argument_error(ix, e))?;
+            loaded_type_arguments.push(ty.type_);
+        }
+
+        let original_address = context.set_link_context(package)?;
+        let storage_id = ModuleId::new(*package, module.clone());
+        let runtime_id = ModuleId::new(original_address, module);
+        execute_move_call::<Mode>(
+            context,
+            &mut vm,
+            &mut argument_updates,
+            &storage_id,
+            &runtime_id,
+            &function,
+            loaded_type_arguments,
+            arguments,
+            /* is_init */ false,
+        )
+    }
+
     /// Execute a single Move call
     fn execute_move_call<Mode: ExecutionMode>(
         context: &mut ExecutionContext<'_, '_, '_>,
+        vm: &mut MoveVM<'_>,
         argument_updates: &mut Mode::ArgumentUpdates,
         storage_id: &ModuleId,
         runtime_id: &ModuleId,
@@ -359,6 +416,7 @@ mod checked {
             last_instr,
         } = check_visibility_and_signature::<Mode>(
             context,
+            vm,
             runtime_id,
             function,
             &type_arguments,
@@ -504,21 +562,16 @@ mod checked {
         let dependencies = fetch_packages(context, &dep_ids)?;
         let package =
             context.new_package(&modules, dependencies.iter().map(|p| p.move_package()))?;
+        let move_package = make_serialized_move_package(context, package.clone());
 
         // Here we optimistacally push the package that is being published/upgraded
         // and if there is an error of any kind (verification or module init) we
         // remove it.
         // The call to `pop_last_package` later is fine because we cannot re-enter and
         // the last package we pushed is the one we are verifying and running the init from
-        context.linkage_view.set_linkage(&package)?;
+        let vm = publish_and_verify_modules(context, runtime_id, move_package, &modules)?;
+        init_modules::<Mode>(context, vm, argument_updates, &modules)?;
         context.write_package(package);
-        let res = publish_and_verify_modules(context, runtime_id, &modules)
-            .and_then(|_| init_modules::<Mode>(context, argument_updates, &modules));
-        context.linkage_view.reset_linkage();
-        if res.is_err() {
-            context.pop_package();
-        }
-        res?;
 
         let values = if Mode::packages_are_predefined() {
             // no upgrade cap for genesis modules
@@ -616,10 +669,9 @@ mod checked {
             &modules,
             dependencies.iter().map(|p| p.move_package()),
         )?;
+        let move_package = make_serialized_move_package(context, package.clone());
 
-        context.linkage_view.set_linkage(&package)?;
-        let res = publish_and_verify_modules(context, runtime_id, &modules);
-        context.linkage_view.reset_linkage();
+        let res = publish_and_verify_modules(context, runtime_id, move_package, &modules);
         res?;
 
         check_compatibility(
@@ -840,28 +892,34 @@ mod checked {
         Ok(modules)
     }
 
+    fn make_serialized_move_package(
+        context: &ExecutionContext<'_, '_, '_>,
+        pkg: MovePackage,
+    ) -> SerializedPackage {
+        let pkg = SerializedPackage {
+            modules: pkg.modules().values().cloned().collect(),
+            storage_id: AccountAddress::from(pkg.id()),
+            linkage_table: pkg.move_linkage_context().linkage_table,
+            type_origin_table: pkg
+                .type_origin_table()
+                .iter()
+                .map(|ty_origin| TypeOrigin {
+                    module_name: Identifier::new(ty_origin.module_name).expect("valid identifier"),
+                    type_name: Identifier::new(ty_origin.datatype_name).expect("valid identifier"),
+                    origin_id: AccountAddress::from(ty_origin.package),
+                })
+                .collect(),
+        };
+    }
+
     fn publish_and_verify_modules(
         context: &mut ExecutionContext<'_, '_, '_>,
-        package_id: ObjectID,
+        runtime_id: ObjectID,
+        pkg: SerializedPackage,
         modules: &[CompiledModule],
     ) -> Result<(), ExecutionError> {
-        // TODO(https://github.com/MystenLabs/sui/issues/69): avoid this redundant serialization by exposing VM API that allows us to run the linker directly on `Vec<CompiledModule>`
-        let binary_version = context.protocol_config.move_binary_format_version();
-        let new_module_bytes: Vec<_> = modules
-            .iter()
-            .map(|m| {
-                let mut bytes = Vec::new();
-                let version = if binary_version > VERSION_6 {
-                    m.version
-                } else {
-                    VERSION_6
-                };
-                m.serialize_with_version(version, &mut bytes).unwrap();
-                bytes
-            })
-            .collect();
         context
-            .publish_module_bundle(new_module_bytes, AccountAddress::from(package_id))
+            .publish_module_bundle(AccountAddress::from(runtime_id), pkg)
             .map_err(|e| context.convert_vm_error(e))?;
 
         // run the Sui verifier
@@ -881,7 +939,8 @@ mod checked {
     }
 
     fn init_modules<Mode: ExecutionMode>(
-        context: &mut ExecutionContext<'_, '_, '_>,
+        context: &ExecutionContext<'_, '_, '_>,
+        vm: &mut MoveVM,
         argument_updates: &mut Mode::ArgumentUpdates,
         modules: &[CompiledModule],
     ) -> Result<(), ExecutionError> {
@@ -899,6 +958,7 @@ mod checked {
         for module_id in modules_to_init {
             let return_values = execute_move_call::<Mode>(
                 context,
+                vm,
                 argument_updates,
                 // `init` is currently only called on packages when they are published for the
                 // first time, meaning their runtime and storage IDs match. If this were to change
@@ -961,6 +1021,7 @@ mod checked {
     /// - module init (only internal usage)
     fn check_visibility_and_signature<Mode: ExecutionMode>(
         context: &mut ExecutionContext<'_, '_, '_>,
+        vm: &MoveVM,
         module_id: &ModuleId,
         function: &IdentStr,
         type_arguments: &[Type],

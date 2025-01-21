@@ -25,6 +25,7 @@ use move_core_types::{
 };
 use move_disassembler::disassembler::Disassembler;
 use move_ir_types::location::Spanned;
+use move_vm_runtime::shared::linkage_context::LinkageContext;
 use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -494,6 +495,15 @@ impl MovePackage {
 
     pub fn linkage_table(&self) -> &BTreeMap<ObjectID, UpgradeInfo> {
         &self.linkage_table
+    }
+
+    pub fn move_linkage_context(&self) -> LinkageContext {
+        LinkageContext::new(
+            self.linkage_table
+                .iter()
+                .map(|(k, v)| ((*k).into(), (*v).upgraded_id.into()))
+                .collect(),
+        )
     }
 
     /// The ObjectID that this package's modules believe they are from, at runtime (can differ from

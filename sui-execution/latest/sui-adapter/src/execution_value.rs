@@ -3,7 +3,7 @@
 
 use move_binary_format::file_format::AbilitySet;
 use move_core_types::identifier::IdentStr;
-use move_vm_types::loaded_data::runtime_types::Type;
+use move_vm_runtime::execution::Type;
 use serde::Deserialize;
 use sui_types::{
     base_types::{ObjectID, SequenceNumber, SuiAddress},
@@ -62,6 +62,12 @@ pub enum InputObjectMetadata {
     },
 }
 
+#[derive(Debug, Clone)]
+pub struct ExecutionType {
+    pub type_: Type,
+    pub abilities: AbilitySet,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UsageKind {
     BorrowImm,
@@ -104,12 +110,12 @@ pub struct ResultValue {
 pub enum Value {
     Object(ObjectValue),
     Raw(RawValueType, Vec<u8>),
-    Receiving(ObjectID, SequenceNumber, Option<Type>),
+    Receiving(ObjectID, SequenceNumber, Option<ExecutionType>),
 }
 
 #[derive(Debug, Clone)]
 pub struct ObjectValue {
-    pub type_: Type,
+    pub type_: ExecutionType,
     pub has_public_transfer: bool,
     // true if it has been used in a public, non-entry Move call
     // In other words, false if all usages have been with non-Move commands or
@@ -128,8 +134,7 @@ pub enum ObjectContents {
 pub enum RawValueType {
     Any,
     Loaded {
-        ty: Type,
-        abilities: AbilitySet,
+        ty: ExecutionType,
         used_in_non_entry_move_call: bool,
     },
 }
@@ -225,7 +230,7 @@ impl Value {
 impl ObjectValue {
     /// # Safety
     /// We must have the Type is the coin type, but we are unable to check it at this spot
-    pub unsafe fn coin(type_: Type, coin: Coin) -> Self {
+    pub unsafe fn coin(type_: ExecutionType, coin: Coin) -> Self {
         Self {
             type_,
             has_public_transfer: true,
@@ -293,7 +298,7 @@ fn try_from_value_prim<'a, T: Deserialize<'a>>(
             bcs::from_bytes(bytes).map_err(|_| CommandArgumentError::InvalidBCSBytes)
         }
         Value::Raw(RawValueType::Loaded { ty, .. }, bytes) => {
-            if ty != &expected_ty {
+            if ty.type_ != &expected_ty {
                 return Err(CommandArgumentError::TypeMismatch);
             }
             bcs::from_bytes(bytes).map_err(|_| CommandArgumentError::InvalidBCSBytes)

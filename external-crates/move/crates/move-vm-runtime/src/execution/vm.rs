@@ -19,7 +19,7 @@ use crate::{
 };
 use move_binary_format::{
     errors::{Location, PartialVMError, PartialVMResult, VMResult},
-    file_format::LocalIndex,
+    file_format::{AbilitySet, LocalIndex},
 };
 use move_core_types::{
     identifier::IdentStr,
@@ -194,6 +194,12 @@ impl<'extensions> MoveVM<'extensions> {
 
     pub fn load_type(&self, tag: &TypeTag) -> VMResult<Type> {
         self.virtual_tables.load_type(tag)
+    }
+
+    pub fn type_abilities(&self, ty: &Type) -> VMResult<AbilitySet> {
+        self.virtual_tables
+            .abilities(ty)
+            .map_err(|e| e.finish(Location::Undefined))
     }
 
     // -------------------------------------------
