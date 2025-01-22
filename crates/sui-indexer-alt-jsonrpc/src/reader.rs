@@ -160,23 +160,6 @@ impl<'p> Connection<'p> {
     where
         U: Send + QueryableByName<Pg> + 'static,
     {
-        // let query_clone = query.clone();
-        // let (query_str, binds) = query_clone.finish();
-        // let explain = format!("EXPLAIN ANALYZE {}", query_str);
-
-        // #[derive(QueryableByName)]
-        // struct ExplainResult {
-        //     #[diesel(sql_type = diesel::sql_types::Text)]
-        //     explain: String,
-        // }
-
-        // let r: ExplainResult = diesel::dsl::sql_query(explain)
-        //     .into_boxed()
-        //     .get_result(&mut self.conn)
-        //     .await?;
-
-        // println!("{}", r.explain);
-
         let query = query.into_boxed();
 
         println!("{}", diesel::debug_query(&query));

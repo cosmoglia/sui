@@ -36,6 +36,8 @@ module Test::fake {
     }
 }
 
+//# create-checkpoint
+
 //# transfer-object 1,1 --sender A --recipient B
 
 //# create-checkpoint
@@ -61,7 +63,7 @@ module Test::fake {
 //# run-jsonrpc
 {
   "method": "suix_getCoins",
-  "params": ["@{A}", null, "@{obj_1_2}"]
+  "params": ["@{A}", null, "@{obj_1_1}"]
 }
 
 //# run-jsonrpc

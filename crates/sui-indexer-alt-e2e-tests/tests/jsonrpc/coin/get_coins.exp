@@ -1,4 +1,4 @@
-processed 11 tasks
+processed 12 tasks
 
 init:
 A: object(0,0), B: object(0,1)
@@ -11,16 +11,20 @@ unchanged_shared: 0x000000000000000000000000000000000000000000000000000000000000
 gas summary: computation_cost: 1000000, storage_cost: 18794800,  storage_rebate: 0, non_refundable_storage_fee: 0
 
 task 2, line 39:
+//# create-checkpoint
+Checkpoint created: 1
+
+task 3, line 41:
 //# transfer-object 1,1 --sender A --recipient B
 mutated: object(0,0), object(1,1)
 unchanged_shared: 0x0000000000000000000000000000000000000000000000000000000000000403
 gas summary: computation_cost: 1000000, storage_cost: 2310400,  storage_rebate: 2287296, non_refundable_storage_fee: 23104
 
-task 3, line 41:
+task 4, line 43:
 //# create-checkpoint
-Checkpoint created: 1
+Checkpoint created: 2
 
-task 4, lines 43-47:
+task 5, lines 45-49:
 //# run-jsonrpc
 Response: {
   "jsonrpc": "2.0",
@@ -41,7 +45,7 @@ Response: {
   }
 }
 
-task 5, lines 49-53:
+task 6, lines 51-55:
 //# run-jsonrpc
 Response: {
   "jsonrpc": "2.0",
@@ -62,7 +66,7 @@ Response: {
   }
 }
 
-task 6, lines 55-59:
+task 7, lines 57-61:
 //# run-jsonrpc
 Response: {
   "jsonrpc": "2.0",
@@ -83,7 +87,7 @@ Response: {
   }
 }
 
-task 7, lines 61-65:
+task 8, lines 63-67:
 //# run-jsonrpc
 Response: {
   "jsonrpc": "2.0",
@@ -95,7 +99,7 @@ Response: {
   }
 }
 
-task 8, lines 67-71:
+task 9, lines 69-73:
 //# run-jsonrpc
 Response: {
   "jsonrpc": "2.0",
@@ -116,7 +120,7 @@ Response: {
   }
 }
 
-task 9, lines 73-77:
+task 10, lines 75-79:
 //# run-jsonrpc
 Response: {
   "jsonrpc": "2.0",
@@ -161,7 +165,7 @@ Response: {
   }
 }
 
-task 10, lines 79-83:
+task 11, lines 81-85:
 //# run-jsonrpc
 Response: {
   "jsonrpc": "2.0",

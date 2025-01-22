@@ -71,6 +71,7 @@ impl RawQuery {
         self
     }
 
+    #[allow(unused)]
     /// Adds an `ORDER BY` clause to the query.
     pub(crate) fn order_by<T: ToString>(mut self, order: T) -> Self {
         self.order_by.push(order.to_string());
@@ -84,6 +85,7 @@ impl RawQuery {
         self
     }
 
+    #[allow(unused)]
     /// Adds a `LIMIT` clause to the query.
     pub(crate) fn limit(mut self, limit: i64) -> Self {
         self.limit = Some(limit);
