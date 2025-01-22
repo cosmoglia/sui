@@ -1653,6 +1653,14 @@ impl AuthorityState {
         let protocol_config = epoch_store.protocol_config();
         let transaction_data = &certificate.data().intent_message().value;
         let (kind, signer, gas) = transaction_data.execution_parts();
+        let sponsor = {
+            let gas_owner = tx_data.gas_owner();
+            if gas_owner == signer {
+                None
+            } else {
+                Some(gas_owner)
+            }
+        };
 
         #[allow(unused_mut)]
         let (inner_temp_store, _, mut effects, _timings, execution_error_opt) =
@@ -1677,6 +1685,7 @@ impl AuthorityState {
                 kind,
                 signer,
                 tx_digest,
+                sponsor,
             );
 
         fail_point_if!("cp_execution_nondeterminism", || {
@@ -1838,6 +1847,14 @@ impl AuthorityState {
 
         let protocol_config = epoch_store.protocol_config();
         let (kind, signer, _) = transaction.execution_parts();
+        let sponsor = {
+            let gas_owner = transaction.gas_owner();
+            if gas_owner == signer {
+                None
+            } else {
+                Some(gas_owner)
+            }
+        };
 
         let silent = true;
         let executor = sui_execution::executor(protocol_config, silent, None)
@@ -1862,6 +1879,7 @@ impl AuthorityState {
                 kind,
                 signer,
                 transaction_digest,
+                sponsor,
             );
         let tx_digest = *effects.transaction_digest();
 
@@ -2028,6 +2046,14 @@ impl AuthorityState {
 
         let protocol_config = epoch_store.protocol_config();
         let (kind, signer, _) = transaction.execution_parts();
+        let sponsor = {
+            let gas_owner = transaction.gas_owner();
+            if gas_owner == signer {
+                None
+            } else {
+                Some(gas_owner)
+            }
+        };
 
         let silent = true;
         let executor = sui_execution::executor(protocol_config, silent, None)
@@ -2052,6 +2078,7 @@ impl AuthorityState {
                 kind,
                 signer,
                 transaction.digest(),
+                sponsor,
             );
 
         Ok(SimulateTransactionResult {
@@ -2241,6 +2268,7 @@ impl AuthorityState {
             sender,
             transaction_digest,
             skip_checks,
+            gas_sponsor,
         );
 
         let raw_effects = if show_raw_txn_data_and_effects {
