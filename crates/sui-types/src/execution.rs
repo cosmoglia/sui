@@ -171,11 +171,20 @@ impl ExecutionResultsV2 {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize)]
 pub enum ExecutionTiming {
     Success(Duration),
     Abort(Duration),
 }
+
 pub type ResultWithTimings<R, E> = Result<(R, Vec<ExecutionTiming>), (E, Vec<ExecutionTiming>)>;
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ExecutionTimingLogRecord {
+    pub transaction_digest: TransactionDigest,
+    pub total_time: Duration,
+    pub timings: Vec<ExecutionTiming>,
+}
 
 /// If a transaction digest shows up in this list, when executing such transaction,
 /// we will always return `ExecutionError::CertificateDenied` without executing it (but still do

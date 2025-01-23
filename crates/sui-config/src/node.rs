@@ -599,6 +599,10 @@ impl NodeConfig {
         self.db_path.join("snapshot")
     }
 
+    pub fn log_path(&self) -> PathBuf {
+        self.db_path.join("logs")
+    }
+
     pub fn network_address(&self) -> &Multiaddr {
         &self.network_address
     }
