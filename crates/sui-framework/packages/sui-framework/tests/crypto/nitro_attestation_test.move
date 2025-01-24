@@ -16,9 +16,9 @@ module sui::nitro_attestation_tests {
         let res = nitro_attestation::verify_nitro_attestation(&payload, &clock);
         
         assert!(vector::length(&nitro_attestation::get_pcrs(&res)) == 6);
-        assert!(nitro_attestation::get_user_data(&res).is_some());
-        assert!(nitro_attestation::get_nonce(&res).is_none());
-        assert!(nitro_attestation::get_public_key(&res).is_none());
+        assert!(res.user_data().is_some());
+        assert!(res.nonce().is_none());
+        assert!(res.public_key().is_none());
 
         scenario.end();
         clock.destroy_for_testing();

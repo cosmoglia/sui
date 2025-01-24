@@ -2797,25 +2797,25 @@ verify_nitro_attestation_internal
 verify_nitro_attestation
 	public fun
 	0x2::nitro_attestation
-get_module_id
+module_id
 	public fun
 	0x2::nitro_attestation
-get_timestamp
+timestamp
 	public fun
 	0x2::nitro_attestation
-get_digest
+digest
 	public fun
 	0x2::nitro_attestation
 get_pcrs
 	public fun
 	0x2::nitro_attestation
-get_public_key
+public_key
 	public fun
 	0x2::nitro_attestation
-get_user_data
+user_data
 	public fun
 	0x2::nitro_attestation
-get_nonce
+nonce
 	public fun
 	0x2::nitro_attestation
 ObjectBag

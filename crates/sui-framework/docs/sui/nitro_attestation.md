@@ -5,15 +5,16 @@ title: Module `sui::nitro_attestation`
 
 
 -  [Struct `NitroAttestationDocument`](#sui_nitro_attestation_NitroAttestationDocument)
+-  [Constants](#@Constants_0)
 -  [Function `verify_nitro_attestation_internal`](#sui_nitro_attestation_verify_nitro_attestation_internal)
 -  [Function `verify_nitro_attestation`](#sui_nitro_attestation_verify_nitro_attestation)
--  [Function `get_module_id`](#sui_nitro_attestation_get_module_id)
--  [Function `get_timestamp`](#sui_nitro_attestation_get_timestamp)
--  [Function `get_digest`](#sui_nitro_attestation_get_digest)
+-  [Function `module_id`](#sui_nitro_attestation_module_id)
+-  [Function `timestamp`](#sui_nitro_attestation_timestamp)
+-  [Function `digest`](#sui_nitro_attestation_digest)
 -  [Function `get_pcrs`](#sui_nitro_attestation_get_pcrs)
--  [Function `get_public_key`](#sui_nitro_attestation_get_public_key)
--  [Function `get_user_data`](#sui_nitro_attestation_get_user_data)
--  [Function `get_nonce`](#sui_nitro_attestation_get_nonce)
+-  [Function `public_key`](#sui_nitro_attestation_public_key)
+-  [Function `user_data`](#sui_nitro_attestation_user_data)
+-  [Function `nonce`](#sui_nitro_attestation_nonce)
 
 
 <pre><code><b>use</b> <a href="../std/ascii.md#std_ascii">std::ascii</a>;
@@ -35,6 +36,7 @@ title: Module `sui::nitro_attestation`
 
 ## Struct `NitroAttestationDocument`
 
+Nitro Attestation Document defined for AWS.
 
 
 <pre><code><b>public</b> <b>struct</b> <a href="../sui/nitro_attestation.md#sui_nitro_attestation_NitroAttestationDocument">NitroAttestationDocument</a> <b>has</b> <b>copy</b>, drop, store
@@ -48,44 +50,89 @@ title: Module `sui::nitro_attestation`
 
 <dl>
 <dt>
-<code>module_id: vector&lt;u8&gt;</code>
+<code><a href="../sui/nitro_attestation.md#sui_nitro_attestation_module_id">module_id</a>: vector&lt;u8&gt;</code>
 </dt>
 <dd>
+ Issuing Nitro hypervisor module ID.
 </dd>
 <dt>
-<code>timestamp: u64</code>
+<code><a href="../sui/nitro_attestation.md#sui_nitro_attestation_timestamp">timestamp</a>: u64</code>
 </dt>
 <dd>
+ UTC time when document was created, in milliseconds since UNIX epoch.
 </dd>
 <dt>
-<code>digest: vector&lt;u8&gt;</code>
+<code><a href="../sui/nitro_attestation.md#sui_nitro_attestation_digest">digest</a>: vector&lt;u8&gt;</code>
 </dt>
 <dd>
+ The digest function used for calculating the register values.
 </dd>
 <dt>
 <code>pcrs: vector&lt;vector&lt;u8&gt;&gt;</code>
 </dt>
 <dd>
+ The map of all locked PCRs at the moment the attestation document was generated.
+ The array contains PCR0, PCR1, PCR2, PCR3, PCR4, PCR8. See more
+  <https://docs.aws.amazon.com/enclaves/latest/user/set-up-attestation.html#where>.
 </dd>
 <dt>
-<code>public_key: <a href="../std/option.md#std_option_Option">std::option::Option</a>&lt;vector&lt;u8&gt;&gt;</code>
+<code><a href="../sui/nitro_attestation.md#sui_nitro_attestation_public_key">public_key</a>: <a href="../std/option.md#std_option_Option">std::option::Option</a>&lt;vector&lt;u8&gt;&gt;</code>
 </dt>
 <dd>
+ An optional DER-encoded key the attestation, consumer can use to encrypt data with.
 </dd>
 <dt>
-<code>user_data: <a href="../std/option.md#std_option_Option">std::option::Option</a>&lt;vector&lt;u8&gt;&gt;</code>
+<code><a href="../sui/nitro_attestation.md#sui_nitro_attestation_user_data">user_data</a>: <a href="../std/option.md#std_option_Option">std::option::Option</a>&lt;vector&lt;u8&gt;&gt;</code>
 </dt>
 <dd>
+ Additional signed user data, defined by protocol.
 </dd>
 <dt>
-<code>nonce: <a href="../std/option.md#std_option_Option">std::option::Option</a>&lt;vector&lt;u8&gt;&gt;</code>
+<code><a href="../sui/nitro_attestation.md#sui_nitro_attestation_nonce">nonce</a>: <a href="../std/option.md#std_option_Option">std::option::Option</a>&lt;vector&lt;u8&gt;&gt;</code>
 </dt>
 <dd>
+ An optional cryptographic nonce provided by the attestation consumer as a proof of
+ authenticity.
 </dd>
 </dl>
 
 
 </details>
+
+<a name="@Constants_0"></a>
+
+## Constants
+
+
+<a name="sui_nitro_attestation_ENotSupportedError"></a>
+
+Error that the feature is not available on this network.
+
+
+<pre><code><b>const</b> <a href="../sui/nitro_attestation.md#sui_nitro_attestation_ENotSupportedError">ENotSupportedError</a>: u64 = 0;
+</code></pre>
+
+
+
+<a name="sui_nitro_attestation_EParseError"></a>
+
+Error that the input failed to be parsed.
+
+
+<pre><code><b>const</b> <a href="../sui/nitro_attestation.md#sui_nitro_attestation_EParseError">EParseError</a>: u64 = 1;
+</code></pre>
+
+
+
+<a name="sui_nitro_attestation_EVerifyError"></a>
+
+Error that the attestation failed to be verified.
+
+
+<pre><code><b>const</b> <a href="../sui/nitro_attestation.md#sui_nitro_attestation_EVerifyError">EVerifyError</a>: u64 = 2;
+</code></pre>
+
+
 
 <a name="sui_nitro_attestation_verify_nitro_attestation_internal"></a>
 
@@ -144,13 +191,13 @@ Returns parsed NitroAttestationDocument after verifying the attestation.
 
 </details>
 
-<a name="sui_nitro_attestation_get_module_id"></a>
+<a name="sui_nitro_attestation_module_id"></a>
 
-## Function `get_module_id`
+## Function `module_id`
 
 
 
-<pre><code><b>public</b> <b>fun</b> <a href="../sui/nitro_attestation.md#sui_nitro_attestation_get_module_id">get_module_id</a>(attestation: &<a href="../sui/nitro_attestation.md#sui_nitro_attestation_NitroAttestationDocument">sui::nitro_attestation::NitroAttestationDocument</a>): vector&lt;u8&gt;
+<pre><code><b>public</b> <b>fun</b> <a href="../sui/nitro_attestation.md#sui_nitro_attestation_module_id">module_id</a>(attestation: &<a href="../sui/nitro_attestation.md#sui_nitro_attestation_NitroAttestationDocument">sui::nitro_attestation::NitroAttestationDocument</a>): vector&lt;u8&gt;
 </code></pre>
 
 
@@ -159,8 +206,8 @@ Returns parsed NitroAttestationDocument after verifying the attestation.
 <summary>Implementation</summary>
 
 
-<pre><code><b>public</b> <b>fun</b> <a href="../sui/nitro_attestation.md#sui_nitro_attestation_get_module_id">get_module_id</a>(attestation: &<a href="../sui/nitro_attestation.md#sui_nitro_attestation_NitroAttestationDocument">NitroAttestationDocument</a>): vector&lt;u8&gt; {
-    attestation.module_id
+<pre><code><b>public</b> <b>fun</b> <a href="../sui/nitro_attestation.md#sui_nitro_attestation_module_id">module_id</a>(attestation: &<a href="../sui/nitro_attestation.md#sui_nitro_attestation_NitroAttestationDocument">NitroAttestationDocument</a>): vector&lt;u8&gt; {
+    attestation.<a href="../sui/nitro_attestation.md#sui_nitro_attestation_module_id">module_id</a>
 }
 </code></pre>
 
@@ -168,13 +215,13 @@ Returns parsed NitroAttestationDocument after verifying the attestation.
 
 </details>
 
-<a name="sui_nitro_attestation_get_timestamp"></a>
+<a name="sui_nitro_attestation_timestamp"></a>
 
-## Function `get_timestamp`
+## Function `timestamp`
 
 
 
-<pre><code><b>public</b> <b>fun</b> <a href="../sui/nitro_attestation.md#sui_nitro_attestation_get_timestamp">get_timestamp</a>(attestation: &<a href="../sui/nitro_attestation.md#sui_nitro_attestation_NitroAttestationDocument">sui::nitro_attestation::NitroAttestationDocument</a>): u64
+<pre><code><b>public</b> <b>fun</b> <a href="../sui/nitro_attestation.md#sui_nitro_attestation_timestamp">timestamp</a>(attestation: &<a href="../sui/nitro_attestation.md#sui_nitro_attestation_NitroAttestationDocument">sui::nitro_attestation::NitroAttestationDocument</a>): u64
 </code></pre>
 
 
@@ -183,8 +230,8 @@ Returns parsed NitroAttestationDocument after verifying the attestation.
 <summary>Implementation</summary>
 
 
-<pre><code><b>public</b> <b>fun</b> <a href="../sui/nitro_attestation.md#sui_nitro_attestation_get_timestamp">get_timestamp</a>(attestation: &<a href="../sui/nitro_attestation.md#sui_nitro_attestation_NitroAttestationDocument">NitroAttestationDocument</a>): u64 {
-    attestation.timestamp
+<pre><code><b>public</b> <b>fun</b> <a href="../sui/nitro_attestation.md#sui_nitro_attestation_timestamp">timestamp</a>(attestation: &<a href="../sui/nitro_attestation.md#sui_nitro_attestation_NitroAttestationDocument">NitroAttestationDocument</a>): u64 {
+    attestation.<a href="../sui/nitro_attestation.md#sui_nitro_attestation_timestamp">timestamp</a>
 }
 </code></pre>
 
@@ -192,13 +239,13 @@ Returns parsed NitroAttestationDocument after verifying the attestation.
 
 </details>
 
-<a name="sui_nitro_attestation_get_digest"></a>
+<a name="sui_nitro_attestation_digest"></a>
 
-## Function `get_digest`
+## Function `digest`
 
 
 
-<pre><code><b>public</b> <b>fun</b> <a href="../sui/nitro_attestation.md#sui_nitro_attestation_get_digest">get_digest</a>(attestation: &<a href="../sui/nitro_attestation.md#sui_nitro_attestation_NitroAttestationDocument">sui::nitro_attestation::NitroAttestationDocument</a>): vector&lt;u8&gt;
+<pre><code><b>public</b> <b>fun</b> <a href="../sui/nitro_attestation.md#sui_nitro_attestation_digest">digest</a>(attestation: &<a href="../sui/nitro_attestation.md#sui_nitro_attestation_NitroAttestationDocument">sui::nitro_attestation::NitroAttestationDocument</a>): vector&lt;u8&gt;
 </code></pre>
 
 
@@ -207,8 +254,8 @@ Returns parsed NitroAttestationDocument after verifying the attestation.
 <summary>Implementation</summary>
 
 
-<pre><code><b>public</b> <b>fun</b> <a href="../sui/nitro_attestation.md#sui_nitro_attestation_get_digest">get_digest</a>(attestation: &<a href="../sui/nitro_attestation.md#sui_nitro_attestation_NitroAttestationDocument">NitroAttestationDocument</a>): vector&lt;u8&gt; {
-    attestation.digest
+<pre><code><b>public</b> <b>fun</b> <a href="../sui/nitro_attestation.md#sui_nitro_attestation_digest">digest</a>(attestation: &<a href="../sui/nitro_attestation.md#sui_nitro_attestation_NitroAttestationDocument">NitroAttestationDocument</a>): vector&lt;u8&gt; {
+    attestation.<a href="../sui/nitro_attestation.md#sui_nitro_attestation_digest">digest</a>
 }
 </code></pre>
 
@@ -240,13 +287,13 @@ Returns parsed NitroAttestationDocument after verifying the attestation.
 
 </details>
 
-<a name="sui_nitro_attestation_get_public_key"></a>
+<a name="sui_nitro_attestation_public_key"></a>
 
-## Function `get_public_key`
+## Function `public_key`
 
 
 
-<pre><code><b>public</b> <b>fun</b> <a href="../sui/nitro_attestation.md#sui_nitro_attestation_get_public_key">get_public_key</a>(attestation: &<a href="../sui/nitro_attestation.md#sui_nitro_attestation_NitroAttestationDocument">sui::nitro_attestation::NitroAttestationDocument</a>): <a href="../std/option.md#std_option_Option">std::option::Option</a>&lt;vector&lt;u8&gt;&gt;
+<pre><code><b>public</b> <b>fun</b> <a href="../sui/nitro_attestation.md#sui_nitro_attestation_public_key">public_key</a>(attestation: &<a href="../sui/nitro_attestation.md#sui_nitro_attestation_NitroAttestationDocument">sui::nitro_attestation::NitroAttestationDocument</a>): <a href="../std/option.md#std_option_Option">std::option::Option</a>&lt;vector&lt;u8&gt;&gt;
 </code></pre>
 
 
@@ -255,8 +302,8 @@ Returns parsed NitroAttestationDocument after verifying the attestation.
 <summary>Implementation</summary>
 
 
-<pre><code><b>public</b> <b>fun</b> <a href="../sui/nitro_attestation.md#sui_nitro_attestation_get_public_key">get_public_key</a>(attestation: &<a href="../sui/nitro_attestation.md#sui_nitro_attestation_NitroAttestationDocument">NitroAttestationDocument</a>): Option&lt;vector&lt;u8&gt;&gt; {
-    attestation.public_key
+<pre><code><b>public</b> <b>fun</b> <a href="../sui/nitro_attestation.md#sui_nitro_attestation_public_key">public_key</a>(attestation: &<a href="../sui/nitro_attestation.md#sui_nitro_attestation_NitroAttestationDocument">NitroAttestationDocument</a>): Option&lt;vector&lt;u8&gt;&gt; {
+    attestation.<a href="../sui/nitro_attestation.md#sui_nitro_attestation_public_key">public_key</a>
 }
 </code></pre>
 
@@ -264,13 +311,13 @@ Returns parsed NitroAttestationDocument after verifying the attestation.
 
 </details>
 
-<a name="sui_nitro_attestation_get_user_data"></a>
+<a name="sui_nitro_attestation_user_data"></a>
 
-## Function `get_user_data`
+## Function `user_data`
 
 
 
-<pre><code><b>public</b> <b>fun</b> <a href="../sui/nitro_attestation.md#sui_nitro_attestation_get_user_data">get_user_data</a>(attestation: &<a href="../sui/nitro_attestation.md#sui_nitro_attestation_NitroAttestationDocument">sui::nitro_attestation::NitroAttestationDocument</a>): <a href="../std/option.md#std_option_Option">std::option::Option</a>&lt;vector&lt;u8&gt;&gt;
+<pre><code><b>public</b> <b>fun</b> <a href="../sui/nitro_attestation.md#sui_nitro_attestation_user_data">user_data</a>(attestation: &<a href="../sui/nitro_attestation.md#sui_nitro_attestation_NitroAttestationDocument">sui::nitro_attestation::NitroAttestationDocument</a>): <a href="../std/option.md#std_option_Option">std::option::Option</a>&lt;vector&lt;u8&gt;&gt;
 </code></pre>
 
 
@@ -279,8 +326,8 @@ Returns parsed NitroAttestationDocument after verifying the attestation.
 <summary>Implementation</summary>
 
 
-<pre><code><b>public</b> <b>fun</b> <a href="../sui/nitro_attestation.md#sui_nitro_attestation_get_user_data">get_user_data</a>(attestation: &<a href="../sui/nitro_attestation.md#sui_nitro_attestation_NitroAttestationDocument">NitroAttestationDocument</a>): Option&lt;vector&lt;u8&gt;&gt; {
-    attestation.user_data
+<pre><code><b>public</b> <b>fun</b> <a href="../sui/nitro_attestation.md#sui_nitro_attestation_user_data">user_data</a>(attestation: &<a href="../sui/nitro_attestation.md#sui_nitro_attestation_NitroAttestationDocument">NitroAttestationDocument</a>): Option&lt;vector&lt;u8&gt;&gt; {
+    attestation.<a href="../sui/nitro_attestation.md#sui_nitro_attestation_user_data">user_data</a>
 }
 </code></pre>
 
@@ -288,13 +335,13 @@ Returns parsed NitroAttestationDocument after verifying the attestation.
 
 </details>
 
-<a name="sui_nitro_attestation_get_nonce"></a>
+<a name="sui_nitro_attestation_nonce"></a>
 
-## Function `get_nonce`
+## Function `nonce`
 
 
 
-<pre><code><b>public</b> <b>fun</b> <a href="../sui/nitro_attestation.md#sui_nitro_attestation_get_nonce">get_nonce</a>(attestation: &<a href="../sui/nitro_attestation.md#sui_nitro_attestation_NitroAttestationDocument">sui::nitro_attestation::NitroAttestationDocument</a>): <a href="../std/option.md#std_option_Option">std::option::Option</a>&lt;vector&lt;u8&gt;&gt;
+<pre><code><b>public</b> <b>fun</b> <a href="../sui/nitro_attestation.md#sui_nitro_attestation_nonce">nonce</a>(attestation: &<a href="../sui/nitro_attestation.md#sui_nitro_attestation_NitroAttestationDocument">sui::nitro_attestation::NitroAttestationDocument</a>): <a href="../std/option.md#std_option_Option">std::option::Option</a>&lt;vector&lt;u8&gt;&gt;
 </code></pre>
 
 
@@ -303,8 +350,8 @@ Returns parsed NitroAttestationDocument after verifying the attestation.
 <summary>Implementation</summary>
 
 
-<pre><code><b>public</b> <b>fun</b> <a href="../sui/nitro_attestation.md#sui_nitro_attestation_get_nonce">get_nonce</a>(attestation: &<a href="../sui/nitro_attestation.md#sui_nitro_attestation_NitroAttestationDocument">NitroAttestationDocument</a>): Option&lt;vector&lt;u8&gt;&gt; {
-    attestation.nonce
+<pre><code><b>public</b> <b>fun</b> <a href="../sui/nitro_attestation.md#sui_nitro_attestation_nonce">nonce</a>(attestation: &<a href="../sui/nitro_attestation.md#sui_nitro_attestation_NitroAttestationDocument">NitroAttestationDocument</a>): Option&lt;vector&lt;u8&gt;&gt; {
+    attestation.<a href="../sui/nitro_attestation.md#sui_nitro_attestation_nonce">nonce</a>
 }
 </code></pre>
 
