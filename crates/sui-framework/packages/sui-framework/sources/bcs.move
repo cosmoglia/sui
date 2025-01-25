@@ -217,6 +217,25 @@ public fun peel_vec_u256(bcs: &mut BCS): vector<u256> {
     bcs.peel_vec!(|bcs| bcs.peel_u256())
 }
 
+// === Enum ===
+
+/// Peel enum from serialized bytes, where `$f` takes a `tag` value and returns
+/// the corresponding enum variant. Move enums are limited to 127 variants,
+/// however the tag can be any `u64` value.
+///
+/// Example:
+/// ```
+/// bcs.peel_enum!(|tag| match (tag) {
+///    0 => Enum::Empty,
+///    1 => Enum::U8(bcs.peel_u8()),
+///    2 => Enum::U16(bcs.peel_u16()),
+///    _ => abort,
+/// });
+/// ```
+public macro fun peel_enum<$T>($bcs: &mut BCS, $f: |u64| -> $T): $T {
+    $f(peel_vec_length($bcs))
+}
+
 // === Option<T> ===
 
 /// Peel `Option<$T>` from serialized bytes, where `$peel: |&mut BCS| -> $T` gives the
