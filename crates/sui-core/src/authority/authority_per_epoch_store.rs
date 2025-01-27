@@ -1001,9 +1001,13 @@ impl AuthorityPerEpochStore {
     pub fn open_timing_log(&self, log_path: impl AsRef<Path>) {
         let mut log_path = log_path.as_ref().to_path_buf();
         log_path.set_file_name(format!(
-            "{}_{}",
+            "{}_{}_{}",
             log_path.file_name().unwrap().to_string_lossy(),
-            self.epoch()
+            self.epoch(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs()
         ));
 
         let mut log = self.timing_log.lock();
