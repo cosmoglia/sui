@@ -436,7 +436,7 @@ impl CheckpointExecutor {
 
     /// Post processing and plumbing after we executed a checkpoint. This function is guaranteed
     /// to be called in the order of checkpoint sequence number.
-    #[instrument(level = "debug", skip_all)]
+    #[instrument(level = "info", skip_all, fields(seq = ?checkpoint.sequence_number()))]
     async fn process_executed_checkpoint(
         &self,
         epoch_store: &AuthorityPerEpochStore,
@@ -447,7 +447,7 @@ impl CheckpointExecutor {
     ) {
         // Commit all transaction effects to disk
         let cache_commit = self.state.get_cache_commit();
-        debug!(seq = ?checkpoint.sequence_number, "committing checkpoint transactions to disk");
+        debug!("committing checkpoint transactions to disk");
         cache_commit
             .commit_transaction_outputs(
                 epoch_store.epoch(),

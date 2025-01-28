@@ -838,24 +838,25 @@ impl SuiNode {
         let sui_node_metrics = Arc::new(SuiNodeMetrics::new(&registry_service.default_registry()));
 
         let validator_components = if state.is_validator(&epoch_store) {
-            let mut components = Self::construct_validator_components(
-                config.clone(),
-                state.clone(),
-                committee,
-                epoch_store.clone(),
-                checkpoint_store.clone(),
-                state_sync_handle.clone(),
-                randomness_handle.clone(),
-                Arc::downgrade(&accumulator),
-                backpressure_manager.clone(),
-                connection_monitor_status.clone(),
-                &registry_service,
-                sui_node_metrics.clone(),
-            )
-            .await?;
+            let (components, _) = futures::join!(
+                Self::construct_validator_components(
+                    config.clone(),
+                    state.clone(),
+                    committee,
+                    epoch_store.clone(),
+                    checkpoint_store.clone(),
+                    state_sync_handle.clone(),
+                    randomness_handle.clone(),
+                    Arc::downgrade(&accumulator),
+                    backpressure_manager.clone(),
+                    connection_monitor_status.clone(),
+                    &registry_service,
+                    sui_node_metrics.clone(),
+                ),
+                Self::reexecute_pending_consensus_certs(&epoch_store, &state,)
+            );
+            let mut components = components?;
 
-            // This is only needed during cold start.
-            Self::reexecute_pending_consensus_certs(&epoch_store, &state).await;
             components.consensus_adapter.submit_recovered(&epoch_store);
 
             // Start the gRPC server
