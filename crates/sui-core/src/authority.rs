@@ -12,6 +12,7 @@ use crate::traffic_controller::TrafficController;
 use crate::transaction_outputs::TransactionOutputs;
 use crate::verify_indexes::verify_indexes;
 use anyhow::anyhow;
+use arc_swap::ArcSwapAny;
 use arc_swap::{ArcSwap, Guard};
 use async_trait::async_trait;
 use authority_per_epoch_store::CertLockGuard;
@@ -58,8 +59,9 @@ use sui_types::layout_resolver::into_struct_layout;
 use sui_types::layout_resolver::LayoutResolver;
 use sui_types::messages_consensus::{AuthorityCapabilitiesV1, AuthorityCapabilitiesV2};
 use sui_types::object::bounded_visitor::BoundedVisitor;
-use sui_types::traffic_control::PolicyConfig;
-use sui_types::traffic_control::RemoteFirewallConfig;
+use sui_types::traffic_control::{
+    PolicyConfig, RemoteFirewallConfig, TrafficControlReconfigParams,
+};
 use sui_types::transaction_executor::SimulateTransactionResult;
 use tap::TapFallible;
 use tokio::sync::mpsc::unbounded_channel;
@@ -833,7 +835,7 @@ pub struct AuthorityState {
     chain_identifier: ChainIdentifier,
 
     /// Traffic controller for Sui core servers (json-rpc, validator service)
-    pub traffic_controller: Option<Arc<TrafficController>>,
+    pub traffic_controller: Option<Arc<ArcSwap<TrafficController>>>,
 }
 
 /// The authority state encapsulates all state, drives execution, and ensures safety.
@@ -1504,20 +1506,16 @@ impl AuthorityState {
         Ok((effects, execution_error_opt))
     }
 
-    pub fn reconfigure_traffic_control(
-        &self,
-        error_threshold: Option<u64>,
-        spam_threshold: Option<u64>,
-        dry_run: Option<bool>,
-    ) -> SuiResult<()> {
-        self.traffic_controller
-            .as_ref()
-            .map(|traffic_controller| {
-                traffic_controller.reconfigure_no_clear(error_threshold, spam_threshold, dry_run)
-            })
-            .unwrap_or(Err(SuiError::InvalidAdminRequest(
-                "traffic controller not enabled".to_string(),
-            )))
+    pub fn reconfigure_traffic_control(&self, params: TrafficControlReconfigParams) {
+        if let Some(traffic_controller) = self.traffic_controller.as_ref() {
+            let (acl, config, metrics, fw_config) = traffic_controller.load().exfiltrate();
+            let new_traffic_controller =
+                TrafficController::from_state(acl, config, metrics, fw_config);
+            // do atomic swap
+            let old_traffic_controller = traffic_controller
+                .swap(Arc::new(ArcSwapAny::from(Arc::new(new_traffic_controller))));
+            old_traffic_controller.shutdown();
+        }
     }
 
     #[instrument(level = "trace", skip_all)]
@@ -2929,13 +2927,14 @@ impl AuthorityState {
         let input_loader =
             TransactionInputLoader::new(execution_cache_trait_pointers.object_cache_reader.clone());
         let epoch = epoch_store.epoch();
-        let traffic_controller_metrics = TrafficControllerMetrics::new(prometheus_registry);
+        let traffic_controller_metrics =
+            Arc::new(TrafficControllerMetrics::new(prometheus_registry));
         let traffic_controller = policy_config.clone().map(|policy| {
-            Arc::new(TrafficController::init(
+            Arc::new(ArcSwap::new(Arc::new(TrafficController::init(
                 policy,
                 traffic_controller_metrics,
                 firewall_config.clone(),
-            ))
+            ))))
         });
         let state = Arc::new(AuthorityState {
             name,
